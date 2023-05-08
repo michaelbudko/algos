@@ -16,11 +16,12 @@ interface Line {
 const POINT_DISTANCE_THRESHOLD = 15;
 const SLOPE_THRESHOLD = 0.0001;
 const INTERCEPT_THRESHOLD = 0.0001;
-const MAX_ITERATIONS = 100;
+const MAX_ITERATIONS = 1000;
 
 function LinearRegression() {
 
     const [line, setLine] = useState<Line>({slope:1, intercept:0});
+    const [redLine, setRedLine] = useState({x: 0, yActual: 0});
     const [learningRateIntercept, setLearningRateIntercept] = useState(0.25);
     const [learningRateSlope, setLearningRateSlope] = useState(0.000011);
     const [lastPoint, setLastPoint] = useState<Point>({x: -1,y: -1});
@@ -39,11 +40,25 @@ function LinearRegression() {
       }
     }
 
+    function wait(ms: number) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    const setRedLine2 = (x: number, y:number): Promise<void> => {
+      return new Promise(resolve => {
+        setTimeout(() => {
+          setRedLine({x: x, yActual: y});
+          resolve();
+        }, 10);
+      });
+    };
+
     function clearPoints() {
-      setShouldRun(false); // added this line
-      setPoints([]);
-      setLastPoint({x: -1,y: -1});
-      setLine({slope:1, intercept:0});
+      if (!shouldRun) {
+        setPoints([]);
+        setLastPoint({x: -1,y: -1});
+        setLine({slope:1, intercept:0});
+      }
     }
 
     const handleMouseDown = (event: any) => {
@@ -76,50 +91,47 @@ function LinearRegression() {
     };
 
     function handleStart() {
-      // setShouldRun(true);
+      setShouldRun(true);
       runAlgo();
 
     }
     
-    function runAlgo() {
+    async function runAlgo() {
       let iteration = 0;
+
+      let dSlope = 0;
+      let dIntercept = 0;
+      let slopeChange = 999;
+      let interceptChange = 999;
     
-      function nextIteration() {
+      while (!((slopeChange < SLOPE_THRESHOLD && interceptChange < INTERCEPT_THRESHOLD) || iteration > 100)) {
         iteration++;
-        let dSlope = 0;
-        let dIntercept = 0;
-        let slopeChange = 0;
-        let interceptChange = 0;
-    
-        points.forEach(point => {
-          dIntercept += (point.x * line.slope + line.intercept) - point.y;
-          dSlope += ((point.x * line.slope + line.intercept) - point.y) * point.x;
-        });
-    
+
+        for (let i = 0; i < points.length; i++) {
+          const point = points.at(i);
+          if (point) {
+            dIntercept += (point.x * line.slope + line.intercept) - point.y;
+            dSlope += ((point.x * line.slope + line.intercept) - point.y) * point.x;
+            await setRedLine2(point.x, point.y);
+          }
+        }
+        
         dSlope /=  points.length;
-        dIntercept /=  points.length;  
-    
+        dIntercept /=  points.length;   
         const newSlope = line.slope - learningRateSlope * dSlope;
-        const newIntercept = line.intercept - learningRateIntercept * dIntercept;
-    
+        const newIntercept = line.intercept - learningRateIntercept * dIntercept;   
         slopeChange = Math.abs((newSlope - line.slope) / line.slope);
         interceptChange = Math.abs((newIntercept - line.intercept) / line.intercept);
-    
-        if ((slopeChange < SLOPE_THRESHOLD && interceptChange < INTERCEPT_THRESHOLD) || iteration > 100) {
-          setShouldRun(false); // added this line
-          console.log(slopeChange)
-          console.log("done")
-        } else {
-          line.slope = newSlope; // Update the line slope with the new value
-          line.intercept = newIntercept;
-          setLine({slope: newSlope, intercept: newIntercept});
-          setTimeout(nextIteration, 50); // delay 10ms between iterations
-        }
+        line.slope = newSlope;
+        line.intercept = newIntercept;
+        setLine({slope: newSlope, intercept: newIntercept});
+        await wait(50);   // each iteration takes 50 ms
       }
-      
-      nextIteration();
+
+      setShouldRun(false); // added this line
+      console.log(slopeChange);
+      console.log("done");
     }
-    // This modified runAlgo function will run each iteration with a delay of 10ms between each iteration. This should give you enough time to see the line gradually change as the algorithm runs.
 
     useEffect(() => {
 
@@ -162,14 +174,19 @@ function LinearRegression() {
         const startY = line.intercept;
         const endX = canvas.width;
         const endY = line.slope * (canvas.width) + line.intercept;
-        // console.log(line.intercept)
-
         ctx.moveTo(startX, startY); // reversed Y
         ctx.lineTo(endX, endY);
         ctx.stroke();
 
+        // Draw Line of Prediction if Needed
+        ctx.beginPath();
+        ctx.moveTo(redLine.x, redLine.x * line.slope + line.intercept);
+        ctx.lineTo(redLine.x, redLine.yActual);
+        ctx.strokeStyle = 'red';
+        ctx.stroke();
+
       }
-    }, [points, line]);
+    }, [points, line, redLine]);
 
     // useEffect(() => {
     //   if (shouldRun) {
